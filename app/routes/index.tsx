@@ -1,28 +1,41 @@
 
 // this shims the global `window` object in node
-import '@lit-labs/ssr/lib/install-global-dom-shim.js';
+// import '@lit-labs/ssr/lib/install-global-dom-shim.js';
 
-import { ClientOnly } from "remix-utils";
+import React, { useEffect, useState } from "react";
 
-// this will fail because there is a number of browser functions called globally in clarity
-import { CdsButton } from '@cds/react/button';
+function dynamic<P extends {}>(importFn: () => Promise<React.ComponentType<P>>) {
+  let hydrating = true;
+  let Component: React.ComponentType<P>;
 
-/**
- * Running without the shim will return a `window is not defined` error from Lit
- * 
- * Installing the shim fixes that,
- *  but then the CdsButton import errors due to browser code being executed from Clarity
- *  
- *  But with the shim of window and document, there's now no good way to check if code is running on the server
- */
+  return function DynamicComponent(props: P) {
+    let [hydrated, setHydrated] = useState(() => !hydrating);
+    useEffect(() => {
+      if (hydrating) {
+        importFn().then(m => {
+          Component = m;
+          setHydrated(true);
+          hydrating = false;
+        })
+      }
+    }, []);
+    return hydrated && Component ? <Component {...props} /> : <div>On the server</div>;
+  }
+}
+
+
+const CdsButton = dynamic(async () => {
+  const Component = await import('@cds/react/button').then(m => m.CdsButton);
+  return Component;
+});
+
 
 export default function Index() {
 
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", lineHeight: "1.4" }}>
       <h1>Welcome to Remix</h1>
-      {/* This is the recommendation from the remix team - only render on the client, but rendering isn't the issue with Lit */}
-      <ClientOnly>{() => <CdsButton>My Button</CdsButton>}</ClientOnly>
+      <CdsButton>My Button</CdsButton>
     </main>
   );
 }
